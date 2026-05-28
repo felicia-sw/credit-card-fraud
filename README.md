@@ -1,29 +1,44 @@
-# 🔍 Detecting and Forecasting Credit Card Fraud
+# 🔍 Credit Card Fraud Detection — KNN vs Logistic Regression
 
-**A Combined Classification and Time Series Approach Using Two Years of Transaction Data**
+**Comparative Classification Analysis with SMOTE Oversampling**
 
-Statistics & Probability — Final Research Project · May 2026
+Statistics & Probability — Final Research Project · Team Nekat Part 100 · May 2026
 
 ---
 
 ## Overview
 
-This research integrates three complementary statistical methods into a single analytical framework for credit card fraud detection:
+This research compares two classification algorithms — **K-Nearest Neighbor (KNN)** and **Logistic Regression** — for detecting credit card fraud on a highly imbalanced dataset (~0.58% fraud rate). Each algorithm is evaluated under two conditions:
 
-| Method | Target | Purpose |
-|---|---|---|
-| **Multiple Linear Regression** | `amt` (transaction amount) | Identify determinants of transaction amounts |
-| **K-Nearest Neighbor Classification** | `is_fraud` (binary) | Per-transaction fraud detection |
-| **ARIMA / SARIMA** | Aggregated fraud counts | Temporal forecasting of fraud volume |
+| Condition | Description |
+|---|---|
+| **Baseline** | No resampling — trained on original imbalanced data |
+| **SMOTE** | Synthetic Minority Oversampling applied to training data only |
+
+**Primary metrics:** F1-score and Recall on the fraud (minority) class.
 
 ## Dataset
 
 - **Source:** [Credit Card Transactions Fraud Detection Dataset](https://www.kaggle.com/datasets/kartik2112/fraud-detection) by Kartik Shenoy (Kaggle)
 - **Generator:** [Sparkov Data Generation Tool](https://github.com/namebrandon/Sparkov_Data_Generation)
-- **Size:** 1,852,394 transactions (subsampled to ~150K–200K for analysis)
+- **Size:** 1,852,394 transactions (subsampled to ~50K for analysis)
 - **Period:** January 2019 – December 2020
-- **Fraud rate:** ~0.52% (highly imbalanced)
-- **License:** CC0: Public Domain
+- **Fraud rate:** ~0.58% (highly imbalanced)
+
+## Variables
+
+| Role | Variable | Description |
+|---|---|---|
+| **Y** | `is_fraud` | Binary: 1 = fraud, 0 = legitimate |
+| X1 | `category` | Merchant category (14 categories, one-hot encoded) |
+| X2 | `gender` | Cardholder gender (M/F, label encoded) |
+| X3 | `age` | Cardholder age (derived from `dob`) |
+| X4 | `city_pop` | Cardholder city population |
+| X5 | `hour` | Transaction hour (0–23) |
+| X6 | `day_of_week` | Transaction day (Mon–Sun, one-hot encoded) |
+| X7 | `is_weekend` | Weekend indicator (1/0) |
+| X8 | `distance` | Haversine distance cardholder–merchant (km) |
+| X9 | `amt` | Transaction amount (USD) |
 
 ## Project Structure
 
@@ -32,7 +47,8 @@ credit-card-fraud/
 ├── data/                  # Raw & cleaned datasets (not tracked in git)
 ├── notebooks/
 │   └── fraud_detection_analysis.ipynb   # Full analysis pipeline
-├── outputs/               # Generated plots, tables, exports
+├── outputs/               # Generated plots & tables
+├── create_notebook.py     # Notebook generator script
 ├── requirements.txt       # Python dependencies
 ├── .gitignore
 └── README.md
@@ -59,29 +75,12 @@ kaggle datasets download -d kartik2112/fraud-detection -p ./data/ --unzip
 jupyter notebook notebooks/fraud_detection_analysis.ipynb
 ```
 
-## Analytical Pipeline
+## Methodology
 
-| Stage | Method | Tools |
-|---|---|---|
-| 1 | Data Acquisition | `kaggle`, `pandas` |
-| 2 | Stratified Subsampling | `sklearn.model_selection` |
-| 3 | Feature Engineering | `pandas`, `numpy` |
-| 4 | Exploratory Data Analysis | `pandas`, `seaborn` |
-| 5 | Correlation Analysis (Pearson) | `scipy.stats`, `seaborn` |
-| 6 | Multiple Linear Regression | `statsmodels` |
-| 7 | MLR Diagnostics | `statsmodels`, `scipy` |
-| 8 | KNN Classification | `sklearn.neighbors` |
-| 9 | Classification Evaluation | `sklearn.metrics` |
-| 10 | Temporal Aggregation | `pandas` |
-| 11 | Time Series Decomposition | `statsmodels` |
-| 12 | ARIMA / SARIMA Modeling | `statsmodels` |
-| 13 | Forecast Evaluation | `sklearn.metrics`, `statsmodels` |
-
-## Reproducibility
-
-- All stochastic procedures use `random_state=42`
-- Analysis runs in a single Jupyter Notebook
-- Python 3.10+ required
+1. **Preprocessing:** Feature engineering (hour, age, distance via haversine), one-hot encoding (category, day_of_week), label encoding (gender), z-score standardization
+2. **Class imbalance:** Baseline (no resampling) vs SMOTE (training data only)
+3. **Evaluation:** Stratified 80:20 split, 5-fold stratified CV for KNN k-selection, confusion matrix, accuracy, precision, recall, F1-score, ROC-AUC
+4. **Comparison:** 4 model variants (KNN Baseline, KNN+SMOTE, LR Baseline, LR+SMOTE)
 
 ## Author
 
