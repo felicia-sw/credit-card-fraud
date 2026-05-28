@@ -27,3 +27,6 @@ kaggle>=1.5.0
 
 # Progress bars (useful for large dataset ops)
 tqdm>=4.65.0
+
+# Research-paper generation (create_paper.py)
+python-docx>=1.1.0

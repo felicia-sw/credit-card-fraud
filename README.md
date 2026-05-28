@@ -21,7 +21,7 @@ This research compares two classification algorithms — **K-Nearest Neighbor (K
 
 - **Source:** [Credit Card Transactions Fraud Detection Dataset](https://www.kaggle.com/datasets/kartik2112/fraud-detection) by Kartik Shenoy (Kaggle)
 - **Generator:** [Sparkov Data Generation Tool](https://github.com/namebrandon/Sparkov_Data_Generation)
-- **Size:** 1,852,394 transactions (subsampled to ~50K for analysis)
+- **Size:** 1,852,394 transactions (subsampled to ~100K for analysis)
 - **Period:** January 2019 – December 2020
 - **Fraud rate:** ~0.58% (highly imbalanced)
 
@@ -40,15 +40,18 @@ This research compares two classification algorithms — **K-Nearest Neighbor (K
 | X8 | `distance` | Haversine distance cardholder–merchant (km) |
 | X9 | `amt` | Transaction amount (USD) |
 
+**Behavioral extension features** (computed leak-free on the full data, beyond the registered set): `amt_zscore_card` (amount vs the card's own spending history), `hours_since_prev` and `txns_24h` (transaction velocity).
+
 ## Project Structure
 
 ```
 credit-card-fraud/
 ├── data/                  # Raw & cleaned datasets (not tracked in git)
 ├── notebooks/
-│   └── fraud_detection_analysis.ipynb   # Full analysis pipeline
+│   ├── 01_eda.ipynb       # EDA & data preparation → saves data_clean.csv
+│   └── 02_analysis.ipynb  # Classification analysis (KNN vs LR, SMOTE, rigor)
 ├── outputs/               # Generated plots & tables
-├── create_notebook.py     # Notebook generator script
+├── create_notebook.py     # Generator script (builds both notebooks)
 ├── requirements.txt       # Python dependencies
 ├── .gitignore
 └── README.md
@@ -71,8 +74,9 @@ pip install -r requirements.txt
 # 4. Download dataset from Kaggle
 kaggle datasets download -d kartik2112/fraud-detection -p ./data/ --unzip
 
-# 5. Open the notebook
-jupyter notebook notebooks/fraud_detection_analysis.ipynb
+# 5. Open the notebooks — run 01_eda first (it creates data_clean.csv), then 02_analysis
+jupyter notebook notebooks/01_eda.ipynb
+jupyter notebook notebooks/02_analysis.ipynb
 ```
 
 ## Methodology
