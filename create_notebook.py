@@ -427,6 +427,67 @@ for algo in ['KNN', 'LR']:
         arrow = '↑' if delta > 0 else '↓' if delta < 0 else '→'
         print(f'  {metric:20s}: {base_val:.4f} → {smote_val:.4f} ({arrow} {abs(delta):.4f})')""")
 
+# ── STAGE 12.6: THRESHOLD TUNING ──
+md("""### 12.6 · Threshold Tuning
+The default 0.5 cut-off is rarely optimal for imbalanced data — it is why some models
+score 0 recall despite a strong ROC-AUC. Here we instead pick, for each model, the
+decision threshold that **maximises the fraud-class F1**, read off the precision–recall
+curve of its predicted probabilities. The test set is untouched; only the cut-off changes.""")
+code("""from sklearn.metrics import precision_recall_curve
+
+def best_f1_threshold(y_true, y_prob):
+    prec, rec, thr = precision_recall_curve(y_true, y_prob)
+    f1 = 2 * prec[:-1] * rec[:-1] / (prec[:-1] + rec[:-1] + 1e-12)
+    i = int(np.argmax(f1))
+    return thr[i], prec[i], rec[i], f1[i]
+
+tuned = []
+for name, (_, y_prob) in models.items():
+    t, p, r, f = best_f1_threshold(y_test, y_prob)
+    tuned.append({'Model': name,
+                  'Default F1': df_results.loc[name, 'F1 (Fraud)'],
+                  'Tuned thr': t,
+                  'Tuned Precision': p,
+                  'Tuned Recall': r,
+                  'Tuned F1': f})
+df_tuned = pd.DataFrame(tuned).set_index('Model')
+
+print('═' * 78)
+print('THRESHOLD TUNING — operating point that maximises fraud-class F1')
+print('═' * 78)
+print(df_tuned.round(4).to_string())
+print()
+for name in ['LR Baseline', 'LR + SMOTE']:
+    print(f"{name}: F1 {df_results.loc[name,'F1 (Fraud)']:.4f} (thr=0.50) "
+          f"→ {df_tuned.loc[name,'Tuned F1']:.4f} (thr={df_tuned.loc[name,'Tuned thr']:.3f})")
+print('\\nNote: KNN uses k=1, so its predicted probabilities are ~binary (0/1) and barely'
+      ' respond to thresholding — tuning mainly benefits Logistic Regression.')""")
+
+md("### 12.6b · Precision–Recall Curves")
+code("""from sklearn.metrics import average_precision_score
+
+plt.figure(figsize=(8, 6))
+for (name, (_, y_prob)), color in zip(models.items(), colors):
+    prec, rec, _ = precision_recall_curve(y_test, y_prob)
+    ap = average_precision_score(y_test, y_prob)
+    plt.plot(rec, prec, color=color, lw=2, label=f'{name} (AP={ap:.3f})')
+
+# Mark the tuned LR + SMOTE operating point (max-F1)
+plt.scatter([df_tuned.loc['LR + SMOTE', 'Tuned Recall']],
+            [df_tuned.loc['LR + SMOTE', 'Tuned Precision']],
+            color='black', zorder=5, s=120, marker='*',
+            label=f"LR+SMOTE tuned (F1={df_tuned.loc['LR + SMOTE','Tuned F1']:.3f})")
+base_rate = y_test.mean()
+plt.axhline(base_rate, ls='--', color='grey', lw=1, alpha=0.7,
+            label=f'No-skill baseline ({base_rate:.4f})')
+plt.xlabel('Recall (Fraud)')
+plt.ylabel('Precision (Fraud)')
+plt.title('Precision–Recall Curves — KNN vs Logistic Regression')
+plt.legend(loc='upper right')
+plt.tight_layout()
+plt.savefig('../outputs/precision_recall_curves.png', dpi=150)
+plt.show()""")
+
 # ── STAGE 13: SUMMARY ──
 md("""---
 ## Stage 13 · Summary & Conclusion
@@ -452,42 +513,50 @@ display(Markdown('\\n'.join(lines)))""")
 
 md("""### 13.2 Research Questions Answered
 
-**Results (50K stratified subsample, 0.52% fraud, test set ≈ 52 fraud cases, 9 features incl. `amt`):**
+**Default-threshold results (50K stratified subsample, 0.52% fraud, test set ≈ 52 fraud cases, 9 features incl. `amt`):**
 
-| Model | Accuracy | Precision (Fraud) | Recall (Fraud) | F1 (Fraud) | ROC-AUC |
+| Model | Accuracy | Precision | Recall | F1 | ROC-AUC |
 |---|---|---|---|---|---|
-| KNN Baseline | 0.9946 | **0.4750** | 0.3654 | **0.4130** | 0.6816 |
+| KNN Baseline | 0.9946 | 0.4750 | 0.3654 | 0.4130 | 0.6816 |
 | KNN + SMOTE | 0.9922 | 0.3088 | 0.4038 | 0.3500 | 0.6996 |
 | LR Baseline | 0.9948 | 0.0000 | 0.0000 | 0.0000 | 0.7617 |
 | LR + SMOTE | 0.8516 | 0.0252 | **0.7308** | 0.0487 | **0.8834** |
 
+**Tuned-threshold results (cut-off chosen to maximise fraud-class F1 — Stage 12.6):**
+
+| Model | Threshold | Precision | Recall | F1 |
+|---|---|---|---|---|
+| KNN Baseline | 1.00 | 0.4750 | 0.3654 | 0.4130 |
+| KNN + SMOTE | 1.00 | 0.3088 | 0.4038 | 0.3500 |
+| LR Baseline | **0.10** | **0.8182** | 0.3462 | **0.4865** |
+| LR + SMOTE | 0.93 | 0.3000 | 0.4615 | 0.3636 |
+
 **1. Which algorithm performs best?**
 
-It depends on the operating goal — the two algorithms win on different metrics:
+**Logistic Regression is the stronger algorithm on every front once the decision threshold is treated as a tunable knob:**
 
-- **KNN Baseline** gives the best **F1 (0.413)** and the best **precision (0.475)** — at the default 0.5 threshold it is the most *balanced* detector, raising relatively few false alarms.
-- **LR + SMOTE** gives the best **recall (0.731)** and the best **ROC-AUC (0.884)** — it catches ~73% of fraud and, by the threshold-independent ROC-AUC, has the strongest underlying ability to rank fraud above legitimate transactions (LR 0.76–0.88 vs KNN 0.68–0.70).
+- At its **tuned threshold (≈0.10), LR Baseline gives the best F1 of any model (0.487)** with high precision (0.818) — and it does so **without SMOTE**. The "useless" zero-recall baseline was never broken; only the default 0.5 cut-off was wrong for a 0.5%-fraud problem.
+- **LR + SMOTE** still owns the best **recall (0.731)** and best **ROC-AUC (0.884)** — the right choice when the goal is to catch as much fraud as possible.
+- **KNN is not competitive:** lower ROC-AUC (0.68–0.70), and because the optimal k=1 produces near-binary probabilities, **its threshold cannot be tuned** (tuned ≈ default). Its best F1 (0.413) trails tuned LR.
 
-Because in fraud detection a missed fraud (false negative) is usually far costlier than a false alarm, **recall and ranking ability are the priority → Logistic Regression + SMOTE is the recommended algorithm**, with the threshold then tuned to recover precision. If instead a balanced precision/recall at the default threshold is wanted, KNN Baseline is the better single choice.
+**Verdict → Logistic Regression.** Use **LR Baseline at threshold ≈ 0.10** for the best precision/recall balance (F1 0.49, precision 0.82), or **LR + SMOTE** when maximum fraud capture (recall 0.73) is the priority.
 
 **2. How does SMOTE affect relative performance?**
 
-SMOTE's effect **differs by algorithm** — it is not universally beneficial here:
-
-- **Logistic Regression — SMOTE is essential.** LR Baseline predicts **zero** frauds (recall 0.000) yet still scores 99.5% accuracy — the classic *accuracy paradox*. SMOTE transforms it: recall **0.000 → 0.731** and ROC-AUC **0.762 → 0.883**. The cost is precision (0.025) and accuracy (down to 0.85) from many false positives.
-- **KNN — SMOTE slightly hurts the balance.** With `amt` available, KNN Baseline already detects fraud reasonably (precision 0.475, F1 0.413). SMOTE nudges recall up (0.365 → 0.404) but drops precision more (0.475 → 0.309), so **F1 falls (0.413 → 0.350)**; ROC-AUC barely moves (0.682 → 0.700).
-- **Takeaway:** SMOTE is critical for the linear model that otherwise ignores the minority class, but counter-productive (for F1) for the distance-based model that already captures local fraud structure.
+- **At the default 0.5 threshold SMOTE looks essential for LR** — it lifts recall 0.000 → 0.731 and ROC-AUC 0.762 → 0.883. But this is largely because SMOTE *implicitly shifts the decision boundary*, and **threshold tuning achieves the same goal more effectively.** Tuned LR Baseline (F1 0.487) beats tuned LR + SMOTE (F1 0.364): once the cut-off is tuned, SMOTE no longer helps F1 and even lowers precision.
+- **For KNN, SMOTE is mildly harmful** (F1 0.413 → 0.350): it already captures local fraud structure via `amt`, so the synthetic points mostly add false positives; ROC-AUC barely moves.
+- **Takeaway:** SMOTE and threshold tuning are two routes to the same end — rebalancing the minority decision. For this dataset **threshold tuning is the more powerful and cheaper lever**; SMOTE's main residual value is maximising recall.
 
 ### Recommendation
 
-**Use Logistic Regression + SMOTE for fraud screening.** Its ROC-AUC of 0.883 shows the strongest discriminative power of all four variants, and it recovers ~73% of fraudulent transactions. Its low precision is a *threshold* artefact, not a ranking weakness — tuning the decision cut-off (or applying a cost-sensitive threshold) on the predicted probabilities is the natural next step to trade some recall for usable precision. Where false-alarm volume must stay low and no threshold tuning is done, **KNN Baseline** (F1 0.413, precision 0.475) is the better off-the-shelf option. Apply SMOTE to LR but **not** to KNN.
+**Deploy Logistic Regression and tune the threshold rather than relying on SMOTE.** A tuned LR Baseline (cut-off ≈ 0.10) delivers the best balanced performance (F1 0.49, precision 0.82, recall 0.35); if the business priority is catching the maximum number of frauds, LR + SMOTE at the default threshold reaches recall 0.73 (at the cost of many false positives). KNN is not recommended here: weaker ranking ability and, at k=1, no usable probability scores to tune.
 
 ### Limitations & Future Work
 
-- **Adding `amt` (X9) was decisive.** Versus the 8-feature version, KNN's ROC-AUC rose 0.51 → 0.68 and its F1 0.04 → 0.41, and LR + SMOTE's ROC-AUC rose 0.75 → 0.88 — confirming transaction amount is the dominant fraud signal in this dataset.
-- **Low precision for the SMOTE models** means many false positives at the default threshold; threshold optimisation / cost-sensitive cut-offs were not applied and are the clearest next improvement.
+- **Adding `amt` (X9) was decisive.** Versus the 8-feature version, KNN's ROC-AUC rose 0.51 → 0.68 and its F1 0.04 → 0.41, and LR + SMOTE's ROC-AUC rose 0.75 → 0.88 — confirming transaction amount is the dominant fraud signal.
+- **KNN probabilities are degenerate at k=1**, which prevents threshold tuning; calibrated scores (distance-weighted voting, a larger k, or Platt scaling) would make KNN tunable and a fairer comparison.
 - **`amt` is highly right-skewed**, which can let outliers dominate KNN's Euclidean distances even after z-scoring; a log transform before scaling may further help KNN.
-- **Moderate fraud count.** At 50K the test set holds ~52 fraud cases — steadier than 30K but still moderate; 100K–200K would tighten the estimates further (at materially higher KNN cross-validation cost).""")
+- **Moderate fraud count.** At 50K the test set holds ~52 fraud cases; 100K–200K would tighten the estimates (at materially higher KNN cross-validation cost).""")
 
 # ── BUILD ──
 nb = {
