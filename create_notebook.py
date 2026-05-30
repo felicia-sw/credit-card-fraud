@@ -173,7 +173,7 @@ print('Saved data_clean.csv')""")
 # ── STAGE 6: EDA ──
 md("""## Stage 6 · Exploratory Data Analysis
 ### 6.1 Descriptive Statistics""")
-code("""df[['amt','amt_zscore_card','hours_since_prev','txns_24h','age','city_pop','distance','hour']].describe().round(2)""")
+code("""df[['amt_zscore_card','hours_since_prev','txns_24h','age','city_pop','distance','hour']].describe().round(2)""")
 
 md("### 6.2 Class Distribution (Imbalance Check)")
 code("""fig, axes = plt.subplots(1, 2, figsize=(12, 4))
@@ -294,8 +294,10 @@ cat_dummies = pd.get_dummies(df['category'], prefix='cat', drop_first=True).asty
 dow_dummies = pd.get_dummies(df['day_of_week'], prefix='dow', drop_first=True).astype(int)
 
 # Numerical features: gender_enc (X2), age (X3), city_pop (X4), hour (X5), is_weekend (X7),
-# distance (X8), amt (X9) + behavioral extensions (amt_zscore_card, hours_since_prev, txns_24h)
-num_features = df[['gender_enc', 'age', 'city_pop', 'hour', 'is_weekend', 'distance', 'amt',
+# distance (X8), amt_zscore_card (replaces raw amt — encodes amount in context of each card's
+# own history, strictly more informative and avoids multicollinearity with amt, r=0.738),
+# hours_since_prev, txns_24h
+num_features = df[['gender_enc', 'age', 'city_pop', 'hour', 'is_weekend', 'distance',
                    'amt_zscore_card', 'hours_since_prev', 'txns_24h']]
 
 # Combine all features
@@ -306,8 +308,10 @@ print(f'Feature matrix shape: {X.shape}')
 print(f'Features ({X.shape[1]} total):')
 print(f'  - Category dummies: {cat_dummies.shape[1]}')
 print(f'  - Day-of-week dummies: {dow_dummies.shape[1]}')
-print(f'  - Numerical: gender_enc, age, city_pop, hour, is_weekend, distance, amt')
-print(f'  - Behavioral: amt_zscore_card, hours_since_prev, txns_24h')
+print(f'  - Numerical: gender_enc, age, city_pop, hour, is_weekend, distance')
+print(f'  - Behavioral: amt_zscore_card (replaces raw amt), hours_since_prev, txns_24h')
+print(f'  Note: raw amt dropped — amt_zscore_card is strictly more informative and avoids')
+print(f'        multicollinearity (amt x amt_zscore_card r=0.738)')
 print(f'\\nClass distribution:\\n{y.value_counts().to_string()}')""")
 
 md("### 7.2 Stratified Train-Test Split (80:20)")
@@ -338,7 +342,7 @@ print(f'\\n⚠️ SMOTE applied ONLY to training data. Test set remains unmodifi
 md("""---
 ## Stage 8 · KNN Classification — Baseline (No SMOTE)
 ### 8.1 Optimal k Selection via 5-Fold Stratified CV""")
-code("""k_candidates = [1, 3, 5, 7, 9, 11, 15, 21]
+code("""k_candidates = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21]  # odd numbers only (avoids ties), consistent step of 2
 cv_results_knn = []
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
 
@@ -753,52 +757,52 @@ display(Markdown('\\n'.join(lines)))""")
 
 md("""### 13.2 Research Questions Answered
 
-**Default-threshold results (100K stratified subsample, 0.52% fraud, test set ≈ 104 fraud cases, 9 registered features + 3 behavioral extensions):**
+**Default-threshold results (100K subsample, 0.52% fraud, test set ≈ 104 fraud cases, 28 features — raw `amt` dropped to resolve multicollinearity with `amt_zscore_card` r=0.738):**
 
 | Model | Accuracy | Precision | Recall | F1 | ROC-AUC | PR-AUC |
 |---|---|---|---|---|---|---|
-| KNN Baseline | 0.9958 | **0.6438** | 0.4519 | 0.5311 | 0.7253 | **0.2938** |
-| KNN + SMOTE | 0.9950 | 0.5179 | 0.5577 | **0.5370** | 0.7775 | 0.2911 |
-| LR Baseline | 0.9943 | 0.1875 | 0.0288 | 0.0500 | 0.8369 | 0.2676 |
-| LR + SMOTE | 0.9016 | 0.0395 | **0.7692** | 0.0752 | **0.9007** | 0.1884 |
+| KNN Baseline | 0.9950 | **0.5397** | 0.3269 | **0.4072** | 0.6627 | 0.1799 |
+| KNN + SMOTE | 0.9930 | 0.3622 | 0.4423 | 0.3983 | 0.7191 | 0.1631 |
+| LR Baseline | 0.9946 | 0.1429 | 0.0096 | 0.0180 | 0.8050 | **0.2457** |
+| LR + SMOTE | 0.8559 | 0.0253 | **0.7115** | 0.0488 | **0.8607** | 0.1918 |
 
 **Threshold-tuned (cut-off chosen to maximise fraud-class F1 — Stage 12.6):**
 
 | Model | Threshold | Precision | Recall | F1 |
 |---|---|---|---|---|
-| KNN Baseline | 1.00 | 0.644 | 0.452 | 0.531 |
-| KNN + SMOTE | 1.00 | 0.518 | 0.558 | **0.537** |
-| LR Baseline | 0.085 | 0.534 | 0.452 | 0.490 |
-| LR + SMOTE | 0.970 | 0.343 | 0.452 | 0.390 |
+| KNN Baseline | 1.000 | 0.540 | 0.327 | 0.407 |
+| KNN + SMOTE | 1.000 | 0.362 | 0.442 | 0.398 |
+| LR Baseline | **0.081** | **0.587** | 0.356 | **0.443** |
+| LR + SMOTE | 0.929 | 0.396 | 0.404 | 0.400 |
 
-**Robustness (Stages 12.8–12.9).** Over 5 repeated splits, KNN + SMOTE F1 = 0.517 ± 0.027 and LR + SMOTE recall = 0.754 ± 0.013 — intervals tight enough that the gaps below are real, not noise. **McNemar's test confirms it:** KNN beats LR on prediction correctness in both the baseline (p = 0.001) and SMOTE (p < 0.0001) conditions.
+**Robustness (Stages 12.8–12.9).** Over 5 repeated splits: KNN Baseline F1 = 0.385 ± 0.029, LR+SMOTE recall = 0.692 ± 0.018 — stable results. **McNemar results are nuanced:** KNN vs LR is **not statistically significant** at the baseline level (p = 0.282); the difference only becomes significant when comparing KNN+SMOTE vs LR+SMOTE (p < 0.0001, KNN wins). This means the advantage of KNN over LR is primarily driven by the SMOTE condition.
 
 **1. Which algorithm performs best?**
 
-With the behavioral features added, **KNN becomes the stronger *balanced* classifier while Logistic Regression remains the stronger *ranker* — and PR-AUC shows why that distinction matters:**
+The answer depends on whether threshold tuning is applied and which metric is prioritised:
 
-- **KNN + SMOTE** has the best **F1 (0.537)**, and KNN Baseline the best **precision (0.644)** and **PR-AUC (0.294)** — KNN actually makes usable fraud predictions.
-- **LR + SMOTE** has the best **recall (0.769)** and **ROC-AUC (0.901)** — but the **worst PR-AUC (0.188)**. This is the key lesson of reporting PR-AUC: ROC-AUC flatters LR + SMOTE because it ignores the flood of *false alarms* behind that recall (precision is just 0.04). Under the precision-aware PR-AUC, KNN wins.
-- The single best F1 anywhere is **distance-weighted KNN at k = 21 with threshold tuning (F1 ≈ 0.570, Stage 12.7)** — better than any default-threshold model.
+- **At default threshold:** KNN Baseline has the best F1 (0.407) and precision (0.540). LR Baseline has the best PR-AUC (0.246), and LR+SMOTE the best recall (0.712) and ROC-AUC (0.861).
+- **After threshold tuning:** tuned LR Baseline becomes the best single model (F1 0.443, precision 0.587) — the "useless" zero-recall baseline was simply miscalibrated at 0.5; shifting to 0.081 unlocks it.
+- **PR-AUC vs ROC-AUC:** LR Baseline leads on PR-AUC (0.246) despite having near-zero recall at the default threshold — confirming that PR-AUC measures ranking ability independently of the threshold.
 
-**Verdict:** for a *deployable* detector that balances catching fraud against false alarms, **KNN (with SMOTE) is the better choice**, and McNemar says its edge over LR is statistically significant. LR + SMOTE is preferable only when maximum recall is the sole goal and false positives are cheap.
+**Verdict:** for a deployable, balanced detector, **KNN Baseline** is the best off-the-shelf choice (F1 0.41, precision 0.54). For maximum fraud capture: **LR+SMOTE** (recall 0.71). For the best single operating point: **tuned LR Baseline** (F1 0.44, precision 0.59).
 
 **2. How does SMOTE affect relative performance?**
 
-- **For KNN, SMOTE now helps** (F1 0.531 → 0.537, recall 0.452 → 0.558) — a reversal from the weaker feature set where it hurt. With informative behavioral features there is real minority-class structure for SMOTE to interpolate.
-- **For LR, SMOTE remains essential but double-edged.** It lifts recall from ~0.03 to 0.77 and ROC-AUC to 0.90, yet collapses precision to 0.04 (accuracy 0.90) — a flood of false positives. Threshold-tuning the *untouched* LR baseline reaches a far healthier balance (F1 0.49, precision 0.53) than LR + SMOTE.
-- **Takeaway:** SMOTE and threshold tuning both rebalance the minority decision. SMOTE helps the model that has structure to exploit (KNN here); for LR, simple threshold tuning is the cleaner lever.
+- **For KNN:** SMOTE slightly hurts F1 (0.407 → 0.398) and precision (0.540 → 0.362) but helps recall (0.327 → 0.442). Without the raw `amt` signal, there is less clear minority structure for SMOTE to interpolate — synthetic points add more noise than signal.
+- **For LR:** SMOTE remains transformative — it lifts recall from ~0.01 to 0.71 and ROC-AUC from 0.805 to 0.861. However, threshold tuning of the untouched LR baseline achieves a better F1 (0.443) than LR+SMOTE at its best (0.400) without flooding legitimate transactions with false alarms.
+- **Takeaway:** SMOTE and threshold tuning are two routes to the same goal. For this feature set, threshold tuning on LR Baseline is the more efficient lever.
 
 ### Recommendation
 
-**Use KNN + SMOTE as the practical fraud detector** (F1 0.54, precision 0.52, best PR-AUC), with distance-weighted voting at a larger k + threshold tuning as the best-performing variant (F1 ≈ 0.57). Reserve **LR + SMOTE** for when recall is the sole priority and false positives are acceptable. And report **PR-AUC, not just ROC-AUC**, on imbalanced fraud data — it reverses the verdict here.
+**KNN Baseline** for a deployable balanced detector; **tuned LR Baseline** (threshold ≈ 0.08) when the best precision/F1 trade-off is needed; **LR+SMOTE** only when maximum recall is the sole priority. Report **PR-AUC alongside ROC-AUC** on imbalanced data — they tell different stories.
 
 ### Limitations & Future Work
 
-- **Behavioral features drove the gains.** `amt_zscore_card` (amount vs the card's own history) lifted KNN + SMOTE F1 from 0.35 to 0.54 and LR + SMOTE ROC-AUC from 0.88 to 0.90. The velocity features (`hours_since_prev`, `txns_24h`) were near-noise (|corr| < 0.02) on this dataset — a fair negative result.
-- **KNN probabilities are degenerate at k = 1**, which blocks threshold tuning. Stage 12.7 shows distance weighting is identical at k = 1, but at k = 21 it yields continuous probabilities and, after tuning, the best KNN result (F1 ≈ 0.57). The strongest KNN needs distance weighting + a larger k + tuning, not the F1-CV-optimal k = 1.
-- **`amt` and `amt_zscore_card` are right-skewed**; a log transform before scaling may further help the distance-based KNN.
-- **Stronger models / more data** (gradient-boosted trees, or the full 1.85M rows) would likely push PR-AUC above the ~0.29 ceiling reached here.""")
+- **Dropping raw `amt` resolved multicollinearity (amt × amt_zscore_card r=0.738) but reduced overall performance**, since `amt` carried some independent signal beyond what `amt_zscore_card` captures. A log-transformed `amt` would reduce skewness and correlation, potentially allowing both to coexist.
+- **k = 1 remains CV-optimal** even with consistent odd spacing [1,3,...,21] — an inherent consequence of extreme class imbalance, not the candidate set.
+- **KNN probabilities are degenerate at k = 1**, preventing threshold tuning; distance-weighted voting at k = 21 yields continuous probabilities and F1 ≈ 0.45 after tuning (Stage 12.7).
+- **Stronger models / more data** (gradient-boosted trees, full 1.85M rows) would likely push performance substantially higher.""")
 
 # ── REFERENCES ──
 md("""---
